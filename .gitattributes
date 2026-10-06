@@ -1,0 +1,34 @@
+# Normalise line endings for text; Unreal and Visual Studio are happy with CRLF on Windows.
+* text=auto
+
+# Source and config are text, so diffs and merges work.
+*.h      text diff=cpp
+*.cpp    text diff=cpp
+*.cs     text
+*.ini    text
+*.uproject text
+*.uplugin  text
+*.md     text
+
+# Unreal assets are binary: never diff, never auto-merge, never touch line endings.
+# If a .uasset conflicts, you pick one side (git checkout --ours / --theirs), you can't combine them.
+*.uasset binary
+*.umap   binary
+
+# Other binary files
+*.png binary
+*.jpg binary
+*.tga binary
+*.wav binary
+*.fbx binary
+*.ttf binary
+*.otf binary
+
+# ---------------------------------------------------------------
+# Git LFS (optional, see the setup guide). To switch it on later:
+#   git lfs install
+#   git lfs track "*.uasset" "*.umap"
+# which replaces the two "binary" lines above with:
+#   *.uasset filter=lfs diff=lfs merge=lfs -text lockable
+#   *.umap   filter=lfs diff=lfs merge=lfs -text lockable
+# ---------------------------------------------------------------
