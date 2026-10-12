@@ -25,9 +25,17 @@ AMatch3Board::AMatch3Board()
 
 void AMatch3Board::InitializeBoard(UMatch3LevelConfig* InConfig)
 {
-	// TODO: implement (diagram 9).
-	// Store Config, SetState(Initializing), size Grid to Rows x Cols,
-	// FillInitialBoard(), then SetState(Idle).
+	if (!InConfig || !InConfig->PieceClass)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AMatch3Board::InitializeBoard: Invalid config, invalid piece class."));
+		return;
+	}
+
+	Config = InConfig;
+	SetState(EBoardState::Initializing);
+	Grid.Init(nullptr, GetRows() * GetCols());
+	FillInitialBoard();
+	SetState(EBoardState::Idle);
 }
 
 bool AMatch3Board::BeginTargeting(EPowerUpType Type, UPowerUpEffect* Effect, AMatch3PlayerState* InInstigator)
@@ -140,31 +148,86 @@ TArray<FMatchResult> AMatch3Board::FindMatches() const
 
 void AMatch3Board::FillInitialBoard()
 {
-	// TODO: implement (diagram 9).
-	// Row by row: PickColorWithoutMatch, RollPowerUp, SpawnPiece (not from above).
+	// Row by row, left to right, so the cells to the left and above already exist when PickColorWithoutMatch checks them.
+	for (int32 Row = 0; Row < GetRows(); ++Row)
+	{
+		for (int32 Col = 0; Col < GetCols(); ++Col)
+		{
+			const FGridCoord Coord(Row, Col);
+			const EPieceColor Color = PickColorWithoutMatch(Coord);
+			const EPowerUpType PowerUp = RollPowerUp();
+			SpawnPiece(Coord, Color, PowerUp, false);
+		}
+	}
 }
 
 APuzzlePieceBase* AMatch3Board::SpawnPiece(FGridCoord Coord, EPieceColor Color, EPowerUpType PowerUp, bool bFromAbove)
 {
-	// TODO: implement.
-	// Spawn Config->PieceClass at GridToWorld(Coord), or above the board when bFromAbove,
-	// InitPiece it and store it in Grid[ToIndex(Coord)].
-	return nullptr;
+	if (!Config || !Config->PieceClass || !IsValidCoord(Coord))
+	{
+		UE_LOG(LogTemp, Error, TEXT("AMatch3Board::SpawnPiece: invalid config, piece class or coord."));
+		return nullptr;
+	}
+
+	// A refill piece starts one board-height above its cell and the caller moves it down.
+	const FGridCoord SpawnCoord = bFromAbove ? FGridCoord(Coord.Row - GetRows(), Coord.Col) : Coord;
+	const FTransform SpawnTransform(GetActorRotation(), GridToWorld(SpawnCoord));
+
+	FActorSpawnParameters SpawnInfo;
+	SpawnInfo.Owner = this;
+	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	APuzzlePieceBase* Piece = GetWorld()->SpawnActor<APuzzlePieceBase>(Config->PieceClass, SpawnTransform, SpawnInfo);
+	if (!Piece)
+	{
+		return nullptr;
+	}
+
+	// The data says which cell the piece belongs to, even while it is still above the board.
+	Piece->InitPiece(Coord, Color, PowerUp, Config);
+	Grid[ToIndex(Coord)] = Piece;
+	return Piece;
 }
 
 EPieceColor AMatch3Board::PickColorWithoutMatch(FGridCoord Coord) const
 {
-	// TODO: implement.
-	// Pick a random color among the first NumColors that does not make 3 in a row
-	// with the two cells to the left or the two cells above.
-	return EPieceColor::Red;
+	// 1. Every color in play.
+	TArray<EPieceColor> Candidates;
+	for (int32 Index = 0; Index < Config->NumColors; ++Index)
+	{
+		Candidates.Add(static_cast<EPieceColor>(Index));
+	}
+
+	// 2. Two same-colored pieces to the left: this cell must not repeat that color.
+	const APuzzlePieceBase* Left1 = GetPieceAt(FGridCoord(Coord.Row, Coord.Col - 1));
+	const APuzzlePieceBase* Left2 = GetPieceAt(FGridCoord(Coord.Row, Coord.Col - 2));
+	if (Left1 && Left2 && Left1->GetColor() == Left2->GetColor())
+	{
+		Candidates.Remove(Left1->GetColor());
+	}
+
+	// 3. Two same-colored pieces above: this cell must not repeat that color.
+	const APuzzlePieceBase* Up1 = GetPieceAt(FGridCoord(Coord.Row - 1, Coord.Col));
+	const APuzzlePieceBase* Up2 = GetPieceAt(FGridCoord(Coord.Row - 2, Coord.Col));
+	if (Up1 && Up2 && Up1->GetColor() == Up2->GetColor())
+	{
+		Candidates.Remove(Up1->GetColor());
+	}
+
+	// 4. Any color that is left is safe.
+	return Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
 }
 
 EPowerUpType AMatch3Board::RollPowerUp() const
 {
-	// TODO: implement.
-	// With PowerUpSpawnChance, return a random type from Config->PowerUps. Otherwise None.
-	return EPowerUpType::None;
+	if (Config->PowerUps.Num() == 0 || FMath::FRand() >= Config->PowerUpSpawnChance)
+	{
+		return EPowerUpType::None;
+	}
+
+	// Every power-up listed in the level config is equally likely.
+	const int32 Index = FMath::RandRange(0, Config->PowerUps.Num() - 1);
+	return Config->PowerUps[Index].Type;
 }
 
 // ---------------------------------------------------------------------------

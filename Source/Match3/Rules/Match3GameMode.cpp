@@ -9,6 +9,8 @@
 #include "PowerUps/PowerUpEffect.h"
 #include "Rules/PowerUpInventoryComponent.h"
 
+#include "Engine/World.h"
+
 AMatch3GameMode::AMatch3GameMode()
 {
 	// C++ defaults. BP_Match3GameMode adds the controller, board and level config.
@@ -19,9 +21,24 @@ AMatch3GameMode::AMatch3GameMode()
 
 void AMatch3GameMode::StartPlay()
 {
-	// TODO: implement (diagram 9), before calling Super.
-	// Check LevelConfig and BoardClass, InitMatch on the GameState with MaxMoves and TargetScore,
-	// spawn BoardClass, then InitializeBoard(LevelConfig).
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS || !BoardClass || !LevelConfig)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AMatch3GameMode: set LevelConfig and BoardClass in BP_Match3GameMode, and keep AMatch3GameState as the GameState class."));
+		Super::StartPlay();
+		return;
+	}
+
+	GS->InitMatch(LevelConfig->MaxMoves, LevelConfig->TargetScore);
+
+	// The GameMode spawns the board, so nobody has to place it in the level by hand.
+	FActorSpawnParameters SpawnInfo;
+	SpawnInfo.Owner = this;
+	Board = GetWorld()->SpawnActor<AMatch3Board>(BoardClass, FTransform::Identity, SpawnInfo);
+	if (Board)
+	{
+		Board->InitializeBoard(LevelConfig);
+	}
 
 	// Last, so the board and the GameState are ready when every actor gets BeginPlay.
 	Super::StartPlay();
@@ -31,9 +48,11 @@ void AMatch3GameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	// TODO: implement.
-	// Get the AMatch3PlayerState from NewPlayer and call
-	// GetInventory()->SetCapacity(LevelConfig->InventoryCapacity).
+	AMatch3PlayerState* Player = NewPlayer ? NewPlayer->GetPlayerState<AMatch3PlayerState>() : nullptr;
+	if (Player && Player->GetInventory() && LevelConfig)
+	{
+		Player->GetInventory()->SetCapacity(LevelConfig->InventoryCapacity);
+	}
 }
 
 bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
