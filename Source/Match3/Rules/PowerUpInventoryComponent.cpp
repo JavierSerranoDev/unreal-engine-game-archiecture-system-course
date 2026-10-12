@@ -10,20 +10,39 @@ UPowerUpInventoryComponent::UPowerUpInventoryComponent()
 
 bool UPowerUpInventoryComponent::AddPowerUp(EPowerUpType Type)
 {
-	// TODO: implement (diagram 13).
-	// 1. Ignore None.
-	// 2. If Queue is full: remember Queue[0], RemoveAt(0), broadcast OnPowerUpDiscarded.
-	// 3. Add Type to the back and broadcast OnInventoryChanged(Queue).
-	// 4. Return whether one was discarded.
-	return false;
+	if (Type == EPowerUpType::None)
+	{
+		return false;
+	}
+
+	bool bDiscarded = false;
+
+	if (Queue.Num() >= Capacity)
+	{
+		const EPowerUpType DiscardedType = Queue[0];
+		Queue.RemoveAt(0);
+		OnPowerUpDiscarded.Broadcast(DiscardedType);
+		bDiscarded = true;
+	}
+
+	Queue.Add(Type);
+	OnInventoryChanged.Broadcast(Queue);
+
+	return bDiscarded;
 }
 
 EPowerUpType UPowerUpInventoryComponent::ConsumeReady()
 {
-	// TODO: implement (diagram 12).
-	// If the queue is empty return None. Otherwise remove Queue[0],
-	// broadcast OnPowerUpActivated(Type) then OnInventoryChanged(Queue), and return Type.
-	return EPowerUpType::None;
+	if (Queue.Num() == 0)
+	{
+		return EPowerUpType::None;
+	}
+
+	const EPowerUpType Type = Queue[0];
+	Queue.RemoveAt(0);
+	OnPowerUpActivated.Broadcast(Type);
+	OnInventoryChanged.Broadcast(Queue);
+	return Type;
 }
 
 void UPowerUpInventoryComponent::SetCapacity(int32 NewCapacity)

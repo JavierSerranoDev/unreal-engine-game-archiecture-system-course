@@ -46,23 +46,42 @@ bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
 
 bool AMatch3GameMode::ConsumeMove()
 {
-	// TODO: implement (STUDENT TODO in the starter project).
-	// Return false if no moves are left. Otherwise DecrementMoves on the GameState and return true.
-	return false;
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS || GS->GetMovesRemaining() <= 0)
+	{
+		return false;
+	}
+
+	GS->DecrementMoves();
+	return true;
 }
 
 int32 AMatch3GameMode::AwardMatch(const FMatchResult& Match, int32 ComboLevel)
 {
-	// TODO: implement (diagram 11).
-	// CalculateMatchScore with Match.Count() and LevelConfig->BasePoints,
-	// then AddScore and SetComboLevel on the GameState. Return the points.
-	return 0;
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS)
+	{
+		return 0;
+	}
+
+	const int32 Points = CalculateMatchScore(Match.Count(), ComboLevel, LevelConfig->BasePoints);
+	GS->AddScore(Points);
+	GS->SetComboLevel(ComboLevel);
+	return Points;
 }
 
 int32 AMatch3GameMode::AwardBlast(int32 CellCount)
 {
-	// TODO: implement (diagram 12). Base x CellCount, AddScore, return the points.
-	return 0;
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS)
+	{
+		return 0;
+	}
+
+	// A blast scores flat per cell: no combo, no length bonus.
+	const int32 Points = LevelConfig->BasePoints * CellCount;
+	GS->AddScore(Points);
+	return Points;
 }
 
 void AMatch3GameMode::GrantPowerUp(EPowerUpType Type)
@@ -78,9 +97,23 @@ void AMatch3GameMode::HandlePowerUpConfirmed(AMatch3PlayerState* Player, int32 C
 
 void AMatch3GameMode::EvaluateEndOfTurn()
 {
-	// TODO: implement (STUDENT TODO in the starter project).
-	// SetComboLevel(0). Then: Score at or above TargetScore -> EndGame(true);
-	// otherwise MovesRemaining is 0 -> EndGame(false). Win is checked first.
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS)
+	{
+		return;
+	}
+
+	GS->SetComboLevel(0);
+
+	// Win is checked first: reaching the target on the last move is a win.
+	if (GS->GetScore() >= GS->GetTargetScore())
+	{
+		EndGame(true);
+	}
+	else if (GS->GetMovesRemaining() <= 0)
+	{
+		EndGame(false);
+	}
 }
 
 int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)
@@ -90,7 +123,15 @@ int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)
 
 void AMatch3GameMode::EndGame(bool bWon)
 {
-	// TODO: implement (diagram 11). Board->LockForGameOver(), then SetGameOver(bWon) on the GameState.
+	// Lock the board first, so no input sneaks in while the game-over screen opens.
+	if (Board)
+	{
+		Board->LockForGameOver();
+	}
+	if (AMatch3GameState* GS = GetMatch3GameState())
+	{
+		GS->SetGameOver(bWon);
+	}
 }
 
 AMatch3GameState* AMatch3GameMode::GetMatch3GameState() const
