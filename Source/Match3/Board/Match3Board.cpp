@@ -40,10 +40,18 @@ void AMatch3Board::InitializeBoard(UMatch3LevelConfig* InConfig)
 
 bool AMatch3Board::BeginTargeting(EPowerUpType Type, UPowerUpEffect* Effect, AMatch3PlayerState* InInstigator)
 {
-	// TODO: implement (diagram 12).
-	// Only from Idle with a valid Effect. Store PendingPowerUp, ActiveEffect and
-	// TargetingInstigator, SetState(Targeting), broadcast OnTargetingStarted.
-	return false;
+	if (State != EBoardState::Idle || !Effect || Type == EPowerUpType::None)
+	{
+		return false;
+	}
+
+	PendingPowerUp = Type;
+	ActiveEffect = Effect;
+	TargetingInstigator = InInstigator;
+	SetState(EBoardState::Targeting);
+
+	OnTargetingStarted.Broadcast(Type, Effect->GetTargetMode(), Effect->GetPromptText());
+	return true;
 }
 
 void AMatch3Board::LockForGameOver()
@@ -103,26 +111,92 @@ bool AMatch3Board::RequestSwap(FGridCoord From, ESwipeDirection Dir)
 
 void AMatch3Board::PreviewTarget(FGridCoord Coord)
 {
-	// TODO: implement (diagram 12).
-	// Only in Targeting. ClearPreview, ask ActiveEffect->GetAffectedCells,
-	// SetHighlighted(true) on those pieces and remember them in PreviewCells.
+	if (State != EBoardState::Targeting || !ActiveEffect)
+	{
+		return;
+	}
+
+	ClearPreview();
+	for (FGridCoord Coord : ActiveEffect->GetAffectedCells(this, Coord))
+	{
+		APuzzlePieceBase* Piece = GetPieceAt(Coord);
+		if (Piece)
+		{
+			Piece->SetHighlighted(true);
+		}
+		PreviewCells.Add(Coord);
+	}
 }
 
 bool AMatch3Board::ConfirmTarget(FGridCoord Coord)
 {
-	// TODO: implement (diagram 12).
-	// Only in Targeting on a valid coord. Get the cells, report HandlePowerUpConfirmed
-	// to the GameMode, broadcast OnTargetingEnded(true), PlayMatched on the cells,
-	// SetState(Resolving) and run the clear -> fall -> ResolveStep loop.
-	// Power-ups inside the blast are not collected.
-	return false;
+	if (State != EBoardState::Targeting || !ActiveEffect || !IsValidCoord(Coord))
+	{
+		return false;
+	}
+
+	// Keep only cells that hold a piece, each once (the X Bomb's diagonals share the target).
+	TArray<FGridCoord> Cells;
+	for (const FGridCoord& Cell : ActiveEffect->GetAffectedCells(this, Coord))
+	{
+		if (GetPieceAt(Cell))
+		{
+			Cells.AddUnique(Cell);
+		}
+	}
+	if (Cells.Num() == 0)
+	{
+		return false; // Nothing to hit: stay in Targeting so the player can aim again.
+	}
+
+	// The GameMode consumes the power-up and scores the blast. No move is spent.
+	if (AMatch3GameMode* GameMode = GetWorld()->GetAuthGameMode<AMatch3GameMode>())
+	{
+		GameMode->HandlePowerUpConfirmed(TargetingInstigator, Cells.Num());
+	}
+
+	ClearPreview();
+	PendingPowerUp = EPowerUpType::None;
+	ActiveEffect = nullptr;
+	TargetingInstigator = nullptr;
+
+	// A blast is a turn of its own, so any cascade it causes starts at combo 1.
+	ComboLevel = 0;
+	CascadeSteps = 0;
+	SetState(EBoardState::Resolving);
+	OnTargetingEnded.Broadcast(true);
+
+	// Straight to Clearing: the effect already chose the cells, so there is no
+	// matching step. Power-ups caught in the blast are destroyed, not collected.
+	for (const FGridCoord& Cell : Cells)
+	{
+		GetPieceAt(Cell)->PlayMatched(Config->ClearDuration);
+	}
+
+	GetWorldTimerManager().SetTimer(StepTimer, FTimerDelegate::CreateWeakLambda(this, [this, Cells]()
+		{
+			ClearCells(Cells);
+			CollapseAndRefill();
+		}), Config->ClearDuration, false);
+
+	return true;
 }
 
 void AMatch3Board::CancelTargeting()
 {
-	// TODO: implement (diagram 12).
-	// Only in Targeting. ClearPreview, drop ActiveEffect, SetState(Idle),
-	// broadcast OnTargetingEnded(false). The power-up stays in the inventory.
+	if (State != EBoardState::Targeting)
+	{
+		return;
+	}
+
+	ClearPreview();
+	PendingPowerUp = EPowerUpType::None;
+	ActiveEffect = nullptr;
+	TargetingInstigator = nullptr;
+	SetState(EBoardState::Idle);
+
+	// Nothing was consumed, so the power-up is still in the ready slot.
+	OnTargetingEnded.Broadcast(false);
 }
 
 // ---------------------------------------------------------------------------

@@ -57,10 +57,23 @@ void AMatch3GameMode::PostLogin(APlayerController* NewPlayer)
 
 bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
 {
-	// TODO: implement (diagram 12).
-	// Needs a ready power-up and an Idle board. Find its FPowerUpEntry in LevelConfig,
-	// NewObject the EffectClass, and call Board->BeginTargeting(Type, Effect, Player).
-	return false;
+	UPowerUpInventoryComponent* Inventory = Player ? Player->GetInventory() : nullptr;
+	if (!Inventory || !Inventory->HasReady() || !Board || Board->GetState() != EBoardState::Idle)
+	{
+		return false;
+	}
+
+	// Peek, don't consume: the power-up leaves the queue only when the target is confirmed.
+	const EPowerUpType Type = Inventory->PeekReady();
+	const FPowerUpEntry Entry = LevelConfig->FindPowerUp(Type);
+	if (!Entry.EffectClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("No EffectClass for %s in the level config."), *UEnum::GetValueAsString(Type));
+		return false;
+	}
+
+	UPowerUpEffect* Effect = NewObject<UPowerUpEffect>(this, Entry.EffectClass);
+	return Board->BeginTargeting(Type, Effect, Player);
 }
 
 bool AMatch3GameMode::ConsumeMove()
@@ -105,13 +118,23 @@ int32 AMatch3GameMode::AwardBlast(int32 CellCount)
 
 void AMatch3GameMode::GrantPowerUp(EPowerUpType Type)
 {
-	// TODO: implement (diagram 13).
-	// Find the player's AMatch3PlayerState and call AddPowerUp(Type) on its inventory.
+	// Single-player game: the power-up always goes to the first (only) player.
+	const APlayerController* PC = GetWorld()->GetFirstPlayerController();
+	AMatch3PlayerState* Player = PC ? PC->GetPlayerState<AMatch3PlayerState>() : nullptr;
+	if (Player && Player->GetInventory())
+	{
+		Player->GetInventory()->AddPowerUp(Type);
+	}
 }
 
 void AMatch3GameMode::HandlePowerUpConfirmed(AMatch3PlayerState* Player, int32 CellCount)
 {
-	// TODO: implement (diagram 12). ConsumeReady on Player's inventory, then AwardBlast(CellCount).
+	// The power-up leaves the queue only now, on confirm. Cancelling never gets here.
+	if (Player && Player->GetInventory())
+	{
+		Player->GetInventory()->ConsumeReady();
+	}
+	AwardBlast(CellCount);
 }
 
 void AMatch3GameMode::EvaluateEndOfTurn()
