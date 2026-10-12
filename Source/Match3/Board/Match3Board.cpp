@@ -61,11 +61,44 @@ void AMatch3Board::LockForGameOver()
 
 bool AMatch3Board::RequestSwap(FGridCoord From, ESwipeDirection Dir)
 {
-	// TODO: implement (diagram 10).
-	// Ignore unless Idle. If From.Neighbor(Dir) is off the board, PlayInvalidSwap and return false.
-	// Otherwise ConsumeMove on the GameMode, SwapInGrid, reset ComboLevel and CascadeSteps,
-	// SetState(Swapping), MoveToCoord both pieces, and start StepTimer for SwapDuration -> ResolveStep.
-	return false;
+	APuzzlePieceBase* PieceA = GetPieceAt(From);
+	if (!PieceA || State != EBoardState::Idle)
+	{
+		return false;
+	}
+
+	// Off the board: shake the piece and spend nothing.
+	const FGridCoord To = From.Neighbor(Dir);
+	if (!IsValidCoord(To))
+	{
+		PieceA->PlayInvalidSwap(Dir);
+		return false;
+	}
+
+	// The GameMode owns the moves. Every valid swap costs one, match or not.
+	AMatch3GameMode* GameMode = GetWorld()->GetAuthGameMode<AMatch3GameMode>();
+	if (!GameMode || !GameMode->ConsumeMove())
+	{
+		return false;
+	}
+
+	// A new turn starts, so the combo counts up from zero again.
+	APuzzlePieceBase* PieceB = GetPieceAt(To);
+	SwapInGrid(From, To);
+	ComboLevel = 0;
+	CascadeSteps = 0;
+	SetState(EBoardState::Swapping);
+
+	// The data is already swapped; now let both pieces animate there.
+	PieceA->MoveToCoord(To, GridToWorld(To), Config->SwapDuration);
+	if (PieceB)
+	{
+		PieceB->MoveToCoord(From, GridToWorld(From), Config->SwapDuration);
+	}
+
+	// Swaps never revert. Once the animation time is up, look for matches.
+	GetWorldTimerManager().SetTimer(StepTimer, this, &AMatch3Board::ResolveStep, Config->SwapDuration);
+	return true;
 }
 
 void AMatch3Board::PreviewTarget(FGridCoord Coord)
@@ -136,10 +169,69 @@ int32 AMatch3Board::GetCols() const
 
 TArray<FMatchResult> AMatch3Board::FindMatches() const
 {
-	// TODO: implement (STUDENT TODO in the starter project).
-	// Scan each row, then each column, for runs of 3 or more pieces of the same color.
-	// Add one FMatchResult per run. Empty cells break a run.
-	return TArray<FMatchResult>();
+	// True when Coord holds a piece of Color. Off-board and empty cells never match.
+	auto HasColorAt = [this](FGridCoord Coord, EPieceColor Color)
+		{
+			const APuzzlePieceBase* Piece = GetPieceAt(Coord);
+			return Piece && Piece->GetColor() == Color;
+		};
+
+	TArray<FMatchResult> Matches;
+
+	// Rows: walk left to right.
+	for (int32 Row = 0; Row < GetRows(); ++Row)
+	{
+		for (int32 Col = 0; Col < GetCols(); ++Col)
+		{
+			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
+			// Only start counting at the first piece of a run, so each run is reported once.
+			if (!Piece || HasColorAt(FGridCoord(Row, Col - 1), Piece->GetColor()))
+			{
+				continue;
+			}
+
+			FMatchResult Run;
+			Run.Color = Piece->GetColor();
+			Run.bHorizontal = true;
+			for (int32 C = Col; HasColorAt(FGridCoord(Row, C), Run.Color); ++C)
+			{
+				Run.Cells.Add(FGridCoord(Row, C));
+			}
+
+			if (Run.Count() >= 3)
+			{
+				Matches.Add(Run);
+			}
+		}
+	}
+
+	// Columns: the same idea, walking top to bottom.
+	for (int32 Col = 0; Col < GetCols(); ++Col)
+	{
+		for (int32 Row = 0; Row < GetRows(); ++Row)
+		{
+			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
+			if (!Piece || HasColorAt(FGridCoord(Row - 1, Col), Piece->GetColor()))
+			{
+				continue;
+			}
+
+			FMatchResult Run;
+			Run.Color = Piece->GetColor();
+			Run.bHorizontal = false;
+			for (int32 R = Row; HasColorAt(FGridCoord(R, Col), Run.Color); ++R)
+			{
+				Run.Cells.Add(FGridCoord(R, Col));
+			}
+
+			if (Run.Count() >= 3)
+			{
+				Matches.Add(Run);
+			}
+		}
+	}
+
+	return Matches;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,33 +328,127 @@ EPowerUpType AMatch3Board::RollPowerUp() const
 
 void AMatch3Board::SwapInGrid(FGridCoord A, FGridCoord B)
 {
-	// TODO: implement. Swap the two Grid slots (data only; MoveToCoord does the visuals).
+	// Data only. RequestSwap calls MoveToCoord afterwards for the visuals.
+	Grid.Swap(ToIndex(A), ToIndex(B));
 }
 
 void AMatch3Board::ResolveStep()
 {
-	// TODO: implement (diagram 11).
-	// SetState(Resolving), FindMatches. None, or CascadeSteps reached MaxCascadeSafety: FinishTurn.
-	// Otherwise ComboLevel + 1, AwardMatch each match, GrantPowerUp for matched pieces that carry one,
-	// PlayMatched, then after ClearDuration ClearCells + CollapseAndRefill, and after FallDuration ResolveStep again.
+	SetState(EBoardState::Resolving);
+
+	const TArray<FMatchResult> Matches = FindMatches();
+	if (Matches.Num() == 0)
+	{
+		FinishTurn(); // The board has settled.
+		return;
+	}
+
+	if (CascadeSteps >= Config->MaxCascadeSafety)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AMatch3Board: cascade stopped after %d steps. Bug guard, check the refill."), CascadeSteps);
+		FinishTurn();
+		return;
+	}
+
+	++CascadeSteps;
+	++ComboLevel;
+
+	// Score every run. An L or T shape is two runs sharing a cell,
+	// so the cells go into a set: each piece is collected and cleared once.
+	AMatch3GameMode* GameMode = GetWorld()->GetAuthGameMode<AMatch3GameMode>();
+	TSet<FGridCoord> MatchedCells;
+	for (const FMatchResult& Match : Matches)
+	{
+		if (GameMode)
+		{
+			GameMode->AwardMatch(Match, ComboLevel);
+		}
+		MatchedCells.Append(Match.Cells);
+	}
+
+	const TArray<FGridCoord> Cells = MatchedCells.Array();
+	for (const FGridCoord& Cell : Cells)
+	{
+		APuzzlePieceBase* Piece = GetPieceAt(Cell);
+		if (GameMode && Piece->HasPowerUp())
+		{
+			GameMode->GrantPowerUp(Piece->GetPowerUp());
+		}
+		Piece->PlayMatched(Config->ClearDuration);
+	}
+
+	// Let the pop play, then remove the pieces and let the rest fall.
+	GetWorldTimerManager().SetTimer(StepTimer, FTimerDelegate::CreateWeakLambda(this, [this, Cells]()
+		{
+			ClearCells(Cells);
+			CollapseAndRefill();
+		}), Config->ClearDuration, false);
 }
 
 void AMatch3Board::ClearCells(const TArray<FGridCoord>& Cells)
 {
-	// TODO: implement. Destroy each piece and null its Grid slot.
+	for (const FGridCoord& Cell : Cells)
+	{
+		if (APuzzlePieceBase* Piece = GetPieceAt(Cell))
+		{
+			Piece->Destroy();
+			Grid[ToIndex(Cell)] = nullptr;
+		}
+	}
 }
 
 void AMatch3Board::CollapseAndRefill()
 {
-	// TODO: implement (diagram 11).
-	// Per column, from the bottom row up: move pieces down into empty slots (MoveToCoord, FallDuration),
-	// then SpawnPiece from above into the slots left at the top.
+	for (int32 Col = 0; Col < GetCols(); ++Col)
+	{
+		int32 TargetRow = GetRows() - 1;
+
+		for (int32 Row = GetRows() - 1; Row >= 0; --Row)
+		{
+			const FGridCoord Coord(Row, Col);
+			if (APuzzlePieceBase* Piece = GetPieceAt(Coord))
+			{
+				if (Row != TargetRow)
+				{
+					// Drop the piece into the lowest empty slot in this column.
+					const FGridCoord To(TargetRow, Col);
+					Grid[ToIndex(To)] = Piece;
+					Grid[ToIndex(Coord)] = nullptr;
+					Piece->MoveToCoord(To, GridToWorld(To), Config->FallDuration);
+				}
+				--TargetRow;
+			}
+		}
+		// Fill the empty cells above with new pieces.
+		for (int32 Row = TargetRow; Row >= 0; --Row)
+		{
+			const FGridCoord Coord(Row, Col);
+			const EPieceColor Color = static_cast<EPieceColor>(FMath::RandRange(0, Config->NumColors - 1));
+			const EPowerUpType PowerUp = RollPowerUp();
+			if (APuzzlePieceBase* NewPiece = SpawnPiece(Coord, Color, PowerUp, true))
+			{
+				NewPiece->MoveToCoord(Coord, GridToWorld(Coord), Config->FallDuration);
+			}
+		}
+	}
+
+	// When the fall is over, check the board again: this is the cascade loop.
+	GetWorldTimerManager().SetTimer(StepTimer, this, &AMatch3Board::ResolveStep, Config->FallDuration);
 }
 
 void AMatch3Board::FinishTurn()
 {
-	// TODO: implement (diagram 11).
-	// Ask the GameMode to EvaluateEndOfTurn. If it did not lock the board for game over, SetState(Idle).
+	// Win and lose are checked only here, once the board has settled.
+	if (AMatch3GameMode* GameMode = GetWorld()->GetAuthGameMode<AMatch3GameMode>())
+	{
+		GameMode->EvaluateEndOfTurn();
+	}
+
+	// EvaluateEndOfTurn may have ended the game and locked the board.
+	if (State != EBoardState::GameOver)
+	{
+		SetState(EBoardState::Idle);
+	}
 }
 
 // ---------------------------------------------------------------------------
