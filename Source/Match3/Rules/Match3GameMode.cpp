@@ -1,6 +1,7 @@
 // Match3GameMode.cpp
 
 #include "Rules/Match3GameMode.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Board/Match3Board.h"
 #include "Rules/Match3GameState.h"
@@ -19,9 +20,24 @@ AMatch3GameMode::AMatch3GameMode()
 
 void AMatch3GameMode::StartPlay()
 {
-	// TODO: implement (diagram 9), before calling Super.
-	// Check LevelConfig and BoardClass, InitMatch on the GameState with MaxMoves and TargetScore,
-	// spawn BoardClass, then InitializeBoard(LevelConfig).
+	AMatch3GameState* Match3GameState = GetMatch3GameState();
+	if (!LevelConfig || !BoardClass || !Match3GameState)
+	{
+		UE_LOG(LogTemp, Error, TEXT("AMatch3GameMode: set LevelConfig and BoardClass in BP_Match3GameMode, and keep AMatch3GameState as the GameState class."));
+		Super::StartPlay();
+		return;
+	}
+
+	Match3GameState->InitMatch(LevelConfig->MaxMoves, LevelConfig->TargetScore);
+
+	// The GameMode spawns the board, so it never has to be placed in the level by hand.
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Board = GetWorld()->SpawnActor<AMatch3Board>(BoardClass, FTransform::Identity, Params);
+	if (Board)
+	{
+		Board->InitializeBoard(LevelConfig);
+	}
 
 	// Last, so the board and the GameState are ready when every actor gets BeginPlay.
 	Super::StartPlay();
@@ -31,56 +47,115 @@ void AMatch3GameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
 
-	// TODO: implement.
-	// Get the AMatch3PlayerState from NewPlayer and call
-	// GetInventory()->SetCapacity(LevelConfig->InventoryCapacity).
+	AMatch3PlayerState* Player = NewPlayer ? NewPlayer->GetPlayerState<AMatch3PlayerState>() : nullptr;
+	if (Player && Player->GetInventory() && LevelConfig)
+	{
+		Player->GetInventory()->SetCapacity(LevelConfig->InventoryCapacity);
+	}
 }
 
 bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
 {
-	// TODO: implement (diagram 12).
-	// Needs a ready power-up and an Idle board. Find its FPowerUpEntry in LevelConfig,
-	// NewObject the EffectClass, and call Board->BeginTargeting(Type, Effect, Player).
-	return false;
+	UPowerUpInventoryComponent* Inventory = Player ? Player->GetInventory() : nullptr;
+	if (!Inventory || !Inventory->HasReady() || !Board || Board->GetState() != EBoardState::Idle)
+	{
+		return false;
+	}
+
+	// Peek, don't consume: the power-up leaves the queue only when the target is confirmed.
+	const EPowerUpType Type = Inventory->PeekReady();
+	const FPowerUpEntry Entry = LevelConfig->FindPowerUp(Type);
+	if (!Entry.EffectClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AMatch3GameMode: no EffectClass for this power-up in the level config."));
+		return false;
+	}
+
+	// A fresh effect object for each use. The board holds it while targeting.
+	UPowerUpEffect* Effect = NewObject<UPowerUpEffect>(this, Entry.EffectClass);
+	return Board->BeginTargeting(Type, Effect, Player);
 }
 
 bool AMatch3GameMode::ConsumeMove()
 {
-	// TODO: implement (STUDENT TODO in the starter project).
-	// Return false if no moves are left. Otherwise DecrementMoves on the GameState and return true.
-	return false;
+	AMatch3GameState* Match3GameState = GetMatch3GameState();
+	if (!Match3GameState || Match3GameState->GetMovesRemaining() <= 0)
+	{
+		return false;
+	}
+
+	Match3GameState->DecrementMoves();
+	return true;
 }
 
 int32 AMatch3GameMode::AwardMatch(const FMatchResult& Match, int32 ComboLevel)
 {
-	// TODO: implement (diagram 11).
-	// CalculateMatchScore with Match.Count() and LevelConfig->BasePoints,
-	// then AddScore and SetComboLevel on the GameState. Return the points.
-	return 0;
+	AMatch3GameState* Match3GameState = GetMatch3GameState();
+	if (!Match3GameState)
+	{
+		return 0;
+	}
+
+	const int32 Points = CalculateMatchScore(Match.Count(), ComboLevel, LevelConfig->BasePoints);
+	Match3GameState->AddScore(Points);
+	Match3GameState->SetComboLevel(ComboLevel);
+	return Points;
 }
 
 int32 AMatch3GameMode::AwardBlast(int32 CellCount)
 {
-	// TODO: implement (diagram 12). Base x CellCount, AddScore, return the points.
-	return 0;
+	AMatch3GameState* Match3GameState = GetMatch3GameState();
+	if (!Match3GameState)
+	{
+		return 0;
+	}
+
+	// A blast scores flat per cell: no combo, no length bonus.
+	const int32 Points = LevelConfig->BasePoints * CellCount;
+	Match3GameState->AddScore(Points);
+	return Points;
 }
 
 void AMatch3GameMode::GrantPowerUp(EPowerUpType Type)
 {
-	// TODO: implement (diagram 13).
-	// Find the player's AMatch3PlayerState and call AddPowerUp(Type) on its inventory.
+	// Single-player game: the power-up always goes to the first (only) player.
+	const APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+	AMatch3PlayerState* Player = PlayerController ? PlayerController->GetPlayerState<AMatch3PlayerState>() : nullptr;
+	if (Player && Player->GetInventory())
+	{
+		Player->GetInventory()->AddPowerUp(Type);
+	}
 }
 
 void AMatch3GameMode::HandlePowerUpConfirmed(AMatch3PlayerState* Player, int32 CellCount)
 {
-	// TODO: implement (diagram 12). ConsumeReady on Player's inventory, then AwardBlast(CellCount).
+	if (Player && Player->GetInventory())
+	{
+		Player->GetInventory()->ConsumeReady();
+	}
+	AwardBlast(CellCount);
 }
 
 void AMatch3GameMode::EvaluateEndOfTurn()
 {
-	// TODO: implement (STUDENT TODO in the starter project).
-	// SetComboLevel(0). Then: Score at or above TargetScore -> EndGame(true);
-	// otherwise MovesRemaining is 0 -> EndGame(false). Win is checked first.
+	AMatch3GameState* Match3GameState = GetMatch3GameState();
+	if (!Match3GameState)
+	{
+		return;
+	}
+
+	// The turn is over, so the combo starts again from zero.
+	Match3GameState->SetComboLevel(0);
+
+	// Win is checked first: reaching the target on the last move is a win.
+	if (Match3GameState->GetScore() >= Match3GameState->GetTargetScore())
+	{
+		EndGame(true);
+	}
+	else if (Match3GameState->GetMovesRemaining() <= 0)
+	{
+		EndGame(false);
+	}
 }
 
 int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)
@@ -90,7 +165,15 @@ int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)
 
 void AMatch3GameMode::EndGame(bool bWon)
 {
-	// TODO: implement (diagram 11). Board->LockForGameOver(), then SetGameOver(bWon) on the GameState.
+	// Lock the board first, so no input sneaks in while the game-over screen opens.
+	if (Board)
+	{
+		Board->LockForGameOver();
+	}
+	if (AMatch3GameState* Match3GameState = GetMatch3GameState())
+	{
+		Match3GameState->SetGameOver(bWon);
+	}
 }
 
 AMatch3GameState* AMatch3GameMode::GetMatch3GameState() const
