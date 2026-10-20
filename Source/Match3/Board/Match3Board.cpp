@@ -243,69 +243,13 @@ int32 AMatch3Board::GetCols() const
 
 TArray<FMatchResult> AMatch3Board::FindMatches() const
 {
-	// True when Coord holds a piece of Color. Off-board and empty cells never match.
-	auto HasColorAt = [this](FGridCoord Coord, EPieceColor Color)
-		{
-			const APuzzlePieceBase* Piece = GetPieceAt(Coord);
-			return Piece && Piece->GetColor() == Color;
-		};
-
-	TArray<FMatchResult> Matches;
-
-	// Rows: walk left to right.
-	for (int32 Row = 0; Row < GetRows(); ++Row)
-	{
-		for (int32 Col = 0; Col < GetCols(); ++Col)
-		{
-			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
-			// Only start counting at the first piece of a run, so each run is reported once.
-			if (!Piece || HasColorAt(FGridCoord(Row, Col - 1), Piece->GetColor()))
-			{
-				continue;
-			}
-
-			FMatchResult Run;
-			Run.Color = Piece->GetColor();
-			Run.bHorizontal = true;
-			for (int32 C = Col; HasColorAt(FGridCoord(Row, C), Run.Color); ++C)
-			{
-				Run.Cells.Add(FGridCoord(Row, C));
-			}
-
-			if (Run.Count() >= 3)
-			{
-				Matches.Add(Run);
-			}
-		}
-	}
-
-	// Columns: the same idea, walking top to bottom.
-	for (int32 Col = 0; Col < GetCols(); ++Col)
-	{
-		for (int32 Row = 0; Row < GetRows(); ++Row)
-		{
-			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
-			if (!Piece || HasColorAt(FGridCoord(Row - 1, Col), Piece->GetColor()))
-			{
-				continue;
-			}
-
-			FMatchResult Run;
-			Run.Color = Piece->GetColor();
-			Run.bHorizontal = false;
-			for (int32 R = Row; HasColorAt(FGridCoord(R, Col), Run.Color); ++R)
-			{
-				Run.Cells.Add(FGridCoord(R, Col));
-			}
-
-			if (Run.Count() >= 3)
-			{
-				Matches.Add(Run);
-			}
-		}
-	}
-
-	return Matches;
+	// TODO(Student): Scan each row and each column for runs of 3+ same-colored pieces.
+	// - Walk rows left to right, then columns top to bottom.
+	// - Start counting only at the first piece of a run, so each run is reported once.
+	// - Off-board and empty cells never match (GetPieceAt returns nullptr for both).
+	// - Fill an FMatchResult (Color, bHorizontal, Cells) for every run with Count() >= 3.
+	// Until then the board never finds a match, so swaps never clear anything.
+	return TArray<FMatchResult>();
 }
 
 // ---------------------------------------------------------------------------

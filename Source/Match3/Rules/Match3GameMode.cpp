@@ -78,13 +78,10 @@ bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
 
 bool AMatch3GameMode::ConsumeMove()
 {
-	AMatch3GameState* GS = GetMatch3GameState();
-	if (!GS || GS->GetMovesRemaining() <= 0)
-	{
-		return false;
-	}
-
-	GS->DecrementMoves();
+	// TODO(Student): Spend one move through the GameState.
+	// - Return false if there is no GameState or no moves are left.
+	// - Otherwise call DecrementMoves() and return true.
+	// Returning true for now keeps swaps working, they just cost nothing yet.
 	return true;
 }
 
@@ -139,23 +136,11 @@ void AMatch3GameMode::HandlePowerUpConfirmed(AMatch3PlayerState* Player, int32 C
 
 void AMatch3GameMode::EvaluateEndOfTurn()
 {
-	AMatch3GameState* GS = GetMatch3GameState();
-	if (!GS)
-	{
-		return;
-	}
-
-	GS->SetComboLevel(0);
-
-	// Win is checked first: reaching the target on the last move is a win.
-	if (GS->GetScore() >= GS->GetTargetScore())
-	{
-		EndGame(true);
-	}
-	else if (GS->GetMovesRemaining() <= 0)
-	{
-		EndGame(false);
-	}
+	// TODO(Student): Runs once the board settles.
+	// - Reset the combo on the GameState to 0.
+	// - Check win first (Score >= TargetScore), so reaching the target on the last move wins.
+	// - Otherwise, no moves left is a loss. Call EndGame(bWon) for either.
+	// Until then the game never ends.
 }
 
 int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)

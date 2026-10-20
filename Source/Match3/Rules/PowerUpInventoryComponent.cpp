@@ -10,39 +10,21 @@ UPowerUpInventoryComponent::UPowerUpInventoryComponent()
 
 bool UPowerUpInventoryComponent::AddPowerUp(EPowerUpType Type)
 {
-	if (Type == EPowerUpType::None)
-	{
-		return false;
-	}
-
-	bool bDiscarded = false;
-
-	if (Queue.Num() >= Capacity)
-	{
-		const EPowerUpType DiscardedType = Queue[0];
-		Queue.RemoveAt(0);
-		OnPowerUpDiscarded.Broadcast(DiscardedType);
-		bDiscarded = true;
-	}
-
-	Queue.Add(Type);
-	OnInventoryChanged.Broadcast(Queue);
-
-	return bDiscarded;
+	// TODO(Student): FIFO queue, Capacity slots, Queue[0] is the ready one.
+	// - Ignore EPowerUpType::None.
+	// - If the queue is full, remove Queue[0] and broadcast OnPowerUpDiscarded with it.
+	// - Append Type to the back and broadcast OnInventoryChanged with the new Queue.
+	// - Return true only if one was discarded.
+	// Until then collected power-ups never reach the inventory.
+	return false;
 }
 
 EPowerUpType UPowerUpInventoryComponent::ConsumeReady()
 {
-	if (Queue.Num() == 0)
-	{
-		return EPowerUpType::None;
-	}
-
-	const EPowerUpType Type = Queue[0];
-	Queue.RemoveAt(0);
-	OnPowerUpActivated.Broadcast(Type);
-	OnInventoryChanged.Broadcast(Queue);
-	return Type;
+	// TODO(Student): Remove and return the ready power-up (Queue[0]).
+	// - An empty queue returns EPowerUpType::None.
+	// - Broadcast OnPowerUpActivated with the type, then OnInventoryChanged with the new Queue.
+	return EPowerUpType::None;
 }
 
 void UPowerUpInventoryComponent::SetCapacity(int32 NewCapacity)
