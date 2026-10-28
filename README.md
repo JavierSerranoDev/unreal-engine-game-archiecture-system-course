@@ -147,7 +147,7 @@ These live on each machine, not in the repo, so set them once:
 | The mouse is stuck inside the game window | Press Shift+F1. |
 | "No EffectClass for EPowerUpType::…" in the Output Log | That power-up's **Effect Class** is empty in `DA_Level01`. |
 
-On `course-started`, some of this is expected until you finish the TODOs: matches don't clear until `FindMatches` is written, swipes do nothing until the controller's swipe handling is in, the HUD doesn't update until `InitHUD` binds its delegates, and the X Bomb clears nothing until its `GetAffectedCells` is done.
+On `course-started`, some of this is expected until you finish the TODOs: matches don't clear until the `FindMatches` solution is uncommented, swipes do nothing until the controller's swipe handling is in, the HUD doesn't update until `InitHUD` binds its delegates, and the X Bomb clears nothing until its `GetAffectedCells` is done.
 
 ## Branches
 
@@ -156,7 +156,7 @@ On `course-started`, some of this is expected until you finish the TODOs: matche
 | `main` | The empty Blank C++ project. A clean reset point. |
 | `develop` | Day-to-day work. Everything is built and tested here first. |
 | `complete-course` | The finished reference project, handed out after class. It only receives merges from `develop`. |
-| `course-started` | What students open at the start of class: `complete-course` with the student TODO parts removed. It still compiles and runs; the board just doesn't clear until `FindMatches` is written. |
+| `course-started` | What students open at the start of class: `complete-course` with the student TODO parts removed. The C++ TODOs keep their solution commented out in place. It still compiles and runs; the board just doesn't clear until `FindMatches` is uncommented. |
 
 Fixes go into `develop` and flow forward: `develop` → `complete-course` → `course-started`.
 
@@ -217,6 +217,8 @@ Students already know their way around the editor, have used Blueprints and know
 | Blueprint | `BP_Match3PlayerController` swipe handling and `ComputeSwipeDirection` |
 | Blueprint | `BP_PowerUp_XBomb.GetAffectedCells` |
 | Blueprint | `WBP_HUD.InitHUD` delegate bindings |
+
+The C++ TODOs come with the full solution already written but commented out, with `// Step N:` comments that walk through the algorithm. Students read the steps, delete the `/*` and `*/` around the solution and the placeholder `return` under it (where there is one), then build. The Blueprint TODOs are built from scratch.
 
 | Time | Session |
 |---|---|

@@ -243,12 +243,85 @@ int32 AMatch3Board::GetCols() const
 
 TArray<FMatchResult> AMatch3Board::FindMatches() const
 {
-	// TODO(Student): Scan each row and each column for runs of 3+ same-colored pieces.
-	// - Walk rows left to right, then columns top to bottom.
-	// - Start counting only at the first piece of a run, so each run is reported once.
-	// - Off-board and empty cells never match (GetPieceAt returns nullptr for both).
-	// - Fill an FMatchResult (Color, bHorizontal, Cells) for every run with Count() >= 3.
-	// Until then the board never finds a match, so swaps never clear anything.
+	// TODO(Student): Uncomment the solution below, then delete the placeholder return at the end.
+	// Scans each row and each column for runs of 3+ same-colored pieces.
+	/*
+	// Step 1: A small helper so the scans stay readable.
+	//         GetPieceAt returns nullptr for off-board and empty cells, so neither can ever match.
+	//         That lets us look one cell past the edge without any extra bounds checks.
+	auto HasColorAt = [this](FGridCoord Coord, EPieceColor Color)
+		{
+			const APuzzlePieceBase* Piece = GetPieceAt(Coord);
+			return Piece && Piece->GetColor() == Color;
+		};
+
+	TArray<FMatchResult> Matches;
+
+	// Step 2: Scan the rows, visiting every cell from left to right.
+	for (int32 Row = 0; Row < GetRows(); ++Row)
+	{
+		for (int32 Col = 0; Col < GetCols(); ++Col)
+		{
+			// Step 3: Only start counting at the first piece of a run.
+			//         If the cell to the left has the same color, this piece belongs to a run
+			//         that was already counted, so skip it. This reports each run exactly once.
+			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
+			if (!Piece || HasColorAt(FGridCoord(Row, Col - 1), Piece->GetColor()))
+			{
+				continue;
+			}
+
+			// Step 4: Walk right while the color holds, collecting every cell of the run.
+			FMatchResult Run;
+			Run.Color = Piece->GetColor();
+			Run.bHorizontal = true;
+			for (int32 C = Col; HasColorAt(FGridCoord(Row, C), Run.Color); ++C)
+			{
+				Run.Cells.Add(FGridCoord(Row, C));
+			}
+
+			// Step 5: Only runs of 3 or more are matches. Shorter runs are dropped.
+			if (Run.Count() >= 3)
+			{
+				Matches.Add(Run);
+			}
+		}
+	}
+
+	// Step 6: Scan the columns with the same idea, walking top to bottom.
+	//         Here the cell to check for "already counted" is the one above (Row - 1).
+	for (int32 Col = 0; Col < GetCols(); ++Col)
+	{
+		for (int32 Row = 0; Row < GetRows(); ++Row)
+		{
+			const APuzzlePieceBase* Piece = GetPieceAt(FGridCoord(Row, Col));
+			if (!Piece || HasColorAt(FGridCoord(Row - 1, Col), Piece->GetColor()))
+			{
+				continue;
+			}
+
+			FMatchResult Run;
+			Run.Color = Piece->GetColor();
+			Run.bHorizontal = false;
+			for (int32 R = Row; HasColorAt(FGridCoord(R, Col), Run.Color); ++R)
+			{
+				Run.Cells.Add(FGridCoord(R, Col));
+			}
+
+			if (Run.Count() >= 3)
+			{
+				Matches.Add(Run);
+			}
+		}
+	}
+
+	// Step 7: Return every match found. An L or T shape shows up as one row run plus
+	//         one column run that share a cell; the board clears each cell only once.
+	return Matches;
+	*/
+
+	// Placeholder so the starter compiles: the board never finds a match, so swaps never clear anything.
+	// Delete this line once the solution above is uncommented.
 	return TArray<FMatchResult>();
 }
 

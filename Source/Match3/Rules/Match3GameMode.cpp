@@ -78,10 +78,27 @@ bool AMatch3GameMode::TryActivateReadyPowerUp(AMatch3PlayerState* Player)
 
 bool AMatch3GameMode::ConsumeMove()
 {
-	// TODO(Student): Spend one move through the GameState.
-	// - Return false if there is no GameState or no moves are left.
-	// - Otherwise call DecrementMoves() and return true.
-	// Returning true for now keeps swaps working, they just cost nothing yet.
+	// TODO(Student): Uncomment the solution below, then delete the placeholder return at the end.
+	// Spends one move through the GameState.
+	/*
+	// Step 1: Get the GameState. It holds MovesRemaining, but only the GameMode may change it.
+	AMatch3GameState* GS = GetMatch3GameState();
+
+	// Step 2: Refuse the move if there is no GameState or no moves are left.
+	//         Returning false tells the board not to perform the swap.
+	if (!GS || GS->GetMovesRemaining() <= 0)
+	{
+		return false;
+	}
+
+	// Step 3: Spend the move. DecrementMoves() also broadcasts OnMovesChanged,
+	//         which is how the HUD finds out without the GameMode knowing about it.
+	GS->DecrementMoves();
+	return true;
+	*/
+
+	// Placeholder so the starter compiles: swaps keep working, they just cost nothing yet.
+	// Delete this line once the solution above is uncommented.
 	return true;
 }
 
@@ -136,11 +153,31 @@ void AMatch3GameMode::HandlePowerUpConfirmed(AMatch3PlayerState* Player, int32 C
 
 void AMatch3GameMode::EvaluateEndOfTurn()
 {
-	// TODO(Student): Runs once the board settles.
-	// - Reset the combo on the GameState to 0.
-	// - Check win first (Score >= TargetScore), so reaching the target on the last move wins.
-	// - Otherwise, no moves left is a loss. Call EndGame(bWon) for either.
-	// Until then the game never ends.
+	// TODO(Student): Uncomment the solution below.
+	// Runs once the board settles, after every cascade has finished.
+	// Until it is uncommented the game never ends.
+	/*
+	// Step 1: Get the GameState. Without it there is nothing to check.
+	AMatch3GameState* GS = GetMatch3GameState();
+	if (!GS)
+	{
+		return;
+	}
+
+	// Step 2: Reset the combo. ComboLevel only counts cascades within one turn.
+	GS->SetComboLevel(0);
+
+	// Step 3: Check the win first, so reaching the target on the last move is a win.
+	// Step 4: Otherwise, running out of moves is a loss. If neither is true, play goes on.
+	if (GS->GetScore() >= GS->GetTargetScore())
+	{
+		EndGame(true);
+	}
+	else if (GS->GetMovesRemaining() <= 0)
+	{
+		EndGame(false);
+	}
+	*/
 }
 
 int32 AMatch3GameMode::CalculateMatchScore(int32 Count, int32 Combo, int32 Base)
